@@ -31,7 +31,7 @@ def simple_rnn(rnn_units):
     )
 
 
-def build_model(rnn_units, batch_size):
+def build_model(rnn_units):
     model = tf.keras.Sequential([
         simple_rnn(rnn_units),
         tf.keras.layers.Dense(2)
@@ -58,6 +58,7 @@ def train_step(x, y):
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
     return loss
 
+
 def train_model(input, output, batch_size):
     history = []
     plt.ion()
@@ -72,7 +73,8 @@ def train_model(input, output, batch_size):
         # Update the progress bar
         history.append(loss.numpy().mean())
 
-        plt.xlabel('Iterations'); plt.ylabel('Loss')
+        plt.xlabel('Iterations')
+        plt.ylabel('Loss')
         plt.plot(history)
         plt.draw()
         plt.pause(2)
@@ -95,7 +97,7 @@ def get_data():
                 continue
             values = line.split('	')
             values = [float(x) for x in values]
-            data[0].append(np.array([values[i] for i in range(2,8)]))
+            data[0].append(np.array([values[i] for i in range(2, 8)]))
             data[1].append(np.array([values[11], values[12]]))
     x = np.asarray(data[0])
     y = np.asarray(data[1])
