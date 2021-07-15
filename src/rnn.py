@@ -2,22 +2,6 @@ import tensorflow as tf
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-
-
-def get_batch(data, attitude, seq_length, batch_size):
-    # the length of the input vector
-    n = data.shape[0] - 1
-    # randomly choose the starting indices for the examples in the training batch
-    idx = np.random.choice(n - seq_length, batch_size)
-
-    input_batch = [data[i:i + seq_length] for i in idx]
-    output_batch = [attitude[i:i + seq_length] for i in idx]
-
-    # x_batch, y_batch provide the true inputs and targets for network training
-    x_batch = np.reshape(input_batch, [batch_size, seq_length, 6])
-    y_batch = np.reshape(output_batch, [batch_size, seq_length, 2])
-    return x_batch, y_batch
 
 
 def simple_rnn(rnn_units):
@@ -31,96 +15,198 @@ def simple_rnn(rnn_units):
     )
 
 
-def build_model(rnn_units):
-    model = tf.keras.Sequential([
+def build_model(rnn_units, batch_size, training=True):
+    sequential = tf.keras.Sequential([
         simple_rnn(rnn_units),
+        tf.keras.layers.Dense(20),
         tf.keras.layers.Dense(2)
     ])
+    inputs = tf.keras.Input((seq_length, 6), batch_size)
+    if training:
+        x = preprocessing_layer(inputs)
+    else:
+        x = tf.keras.layers.experimental.preprocessing.Normalization()(inputs)
+    outputs = sequential(x)
+    model = tf.keras.Model(inputs, outputs)
 
     return model
 
 
-def compute_loss(y_true, y_pred):
-    loss = tf.keras.losses.mean_squared_error(y_true, y_pred)
-    return loss
+def train_model(train, val):
+    model = build_model(rnn_units, batch_size=64)
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        monitor='val_loss', patience=5, verbose=1,
+        mode='min', restore_best_weights=True
+    )
+
+    model.compile(loss='mean_absolute_error',
+                  optimizer=tf.optimizers.Adam(learning_rate=4e-3),
+                  metrics=['mean_squared_error', 'accuracy'])
+    history = model.fit(x=train, batch_size=None,
+                        epochs=500,
+                        callbacks=[early_stopping],
+                        validation_data=val,
+                        validation_freq=1,
+                        verbose=1)
+    plot_history(history)
+    filepath = os.path.join('./training_checkpoints', 'mymodel')
+    model.save_weights(filepath, overwrite=True)
 
 
-def train_step(x, y):
-    # Use tf.GradientTape()
-    with tf.GradientTape() as tape:
-        y_hat = model(x)
-        loss = compute_loss(y, y_hat)
-
-    # Compute the gradients
-    grads = tape.gradient(loss, model.trainable_variables)
-
-    # Apply the gradients to the optimizer so it can update the model accordingly
-    optimizer.apply_gradients(zip(grads, model.trainable_variables))
-    return loss
-
-
-def train_model(input, output, batch_size):
-    history = []
-    plt.ion()
-    fig = plt.figure()
-    if hasattr(tqdm, '_instances'): tqdm._instances.clear()  # clear if it exists
-
-    for iter in tqdm(range(num_training_iterations)):
-
-        # Grab a batch and propagate it through the network
-        x_batch, y_batch = get_batch(input, output, seq_length, batch_size)
-        loss = train_step(x_batch, y_batch)
-        # Update the progress bar
-        history.append(loss.numpy().mean())
-
-        plt.xlabel('Iterations')
-        plt.ylabel('Loss')
-        plt.plot(history)
-        plt.draw()
-        plt.pause(2)
-
-        # Update the model with the changed weights
-        if iter % 100 == 0:
-            model.save_weights(checkpoint_prefix)
-    plt.ioff()
+def plot_history(history):
+    plt.figure(1)
+    plt.plot(history.history['loss'], label='MAE (training data)')
+    plt.plot(history.history['val_loss'], label='MAE (validation data)')
+    plt.title('MAE for Cosine of Attitude')
+    plt.ylabel('MAE value')
+    plt.xlabel('Epoch')
+    plt.legend(loc="upper left")
     plt.show()
-    # Save the trained model and the weights
-    model.save_weights(checkpoint_prefix)
+
+    plt.figure(2)
+    plt.plot(history.history['accuracy'], label='Accuracy (training data)')
+    plt.plot(history.history['val_accuracy'], label='Accuracy (validation data)')
+    plt.title('Accuracy for Cosine of Attitude')
+    plt.ylabel('Accuracy')
+    plt.xlabel('Epoch')
+    plt.legend(loc="upper left")
+    plt.show()
 
 
-def get_data():
+def test_model(data):
+    model = build_model(rnn_units, batch_size=1,training=False)
+    model.load_weights('./training_checkpoints/mymodel')
+    model.summary()
+
+    outputs = []
+    for seq in data:
+        outputs.append(model(seq))
+    return outputs
+
+
+def adapt(x):
+    # set weights for normalization of inputs
+    global preprocessing_layer
+    preprocessing_layer = tf.keras.layers.experimental.preprocessing.Normalization()
+    preprocessing_layer.adapt(x)
+
+    # save preprocessing weights
+    weights = preprocessing_layer.get_weights()
+    weights = np.asarray(weights, dtype=object)
+
+    file = open('preprocess_weights.npy', 'wb')
+    file.truncate(0)
+    np.save(file, weights)
+    file.close()
+
+
+def set_preprocess_weights():
+    file = open('preprocess_weights.npy', 'rb')
+    weights = np.load(file, allow_pickle=True)
+    file.close()
+
+    weights = weights.tolist()
+    global preprocessing_layer
+    preprocessing_layer = tf.keras.layers.experimental.preprocessing.Normalization(mean=weights[0], variance=weights[1])
+
+
+def normalize_output(y):
+    # normalize angles using cosine
+    # ensures all values in [-1,1] and no large loss between -180 and 180 degrees
+    y = y * np.pi / 180
+    normalized_y = np.cos(y)
+
+    return normalized_y
+
+
+def get_data(training=True):
     data = [[], []]
-    for file_name in os.listdir('../data/training'):
-        inFile = open('../data/training/' + file_name, 'r')
+    if training:
+        dir = '../data/training/'
+    else:
+        dir = '../data/testing/'
+    for file_name in os.listdir(dir):
+        inFile = open(dir + file_name, 'r')
         for line in inFile:
             if line.startswith('//') or line.startswith('PacketCounter'):
                 continue
             values = line.split('	')
             values = [float(x) for x in values]
-            data[0].append(np.array([values[i] for i in range(2, 8)]))
-            data[1].append(np.array([values[11], values[12]]))
+            data[0].append([values[i] for i in range(2, 8)])
+            data[1].append([values[15], values[16]])
+
     x = np.asarray(data[0])
-    y = np.asarray(data[1])
-    return x, y
+    y = normalize_output(np.asarray(data[1]))
+
+    if training:
+        len_val = len(data[0]) // 5
+
+        # separate data into training and validation sets
+        x_train = x[:-len_val]
+        y_train = y[:-len_val]
+        x_val = x[-len_val:]
+        y_val = y[-len_val:]
+
+        # adapt input normalization layer using training data
+        adapt(x_train)
+
+        train_ds = make_dataset(x_train, y_train)
+        val_ds = make_dataset(x_val, y_val)
+
+        return train_ds, val_ds
+    else:
+        ds = make_dataset(x)
+        return ds
 
 
-# optimization parameters
-num_training_iterations = 1000
-batch_size = 50
-seq_length = 250
-learning_rate = 1e-4
+def make_dataset(x, y=None):
+    if y:
+        x_seq = sequences(x)
+        y_seq = sequences(y)
+        ds = tf.data.Dataset.from_tensor_slices((x_seq, y_seq))
+        ds = ds.batch(batch_size=64, drop_remainder=True)
+    else:
+        ds = tf.keras.preprocessing.timeseries_dataset_from_array(
+            data=x,
+            targets=None,
+            sequence_length=seq_length,
+            batch_size=1)
 
-# model parameters
-rnn_units = 1500
+    return ds
 
-# checkpoint location
-checkpoint_dir = './training_checkpoints'
-checkpoint_prefix = os.path.join(checkpoint_dir, "my_ckpt")
 
-model = build_model(rnn_units, batch_size)
-optimizer = tf.keras.optimizers.Adam(learning_rate)
+def sequences(data):
+    seq = []
+    for i in range(len(data) - seq_length + 1):
+        seq.append([data[i] for i in range(i, i + seq_length)])
+    return seq
+
+
+def save_dataset(ds, name):
+    path = os.path.join('../datasets', name)
+    tf.data.experimental.save(ds, path)
+
+
+def set_global():
+    global seq_length
+    seq_length = 200
+
+    global rnn_units
+    rnn_units = 20
+
 
 if __name__ == '__main__':
-    x, y = get_data()
-    train_model(x, y, batch_size)
+    set_global()
+
+    # train, val = get_data(training=True)
+    # save_dataset(train, 'train_1')
+    # save_dataset(val, 'val_1')
+
+    # train = tf.data.experimental.load('../datasets/train_1')
+    # val = tf.data.experimental.load('../datasets/val_1')
+    # set_preprocess_weights()  # if loading previously saved datasets
+    # train_model(train, val)
+
+    inputs = get_data(training=False)
+    outputs = test_model(inputs)
     pass
