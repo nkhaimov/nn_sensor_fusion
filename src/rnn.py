@@ -10,7 +10,7 @@ def simple_rnn(rnn_units):
         activation='relu',
         kernel_initializer='glorot_uniform',
         dropout=.4,
-        return_sequences=True,
+        return_sequences=False,
         stateful=True
     )
 
@@ -60,7 +60,7 @@ def plot_history(history):
     plt.title('MAE for Cosine of Attitude')
     plt.ylabel('MAE value')
     plt.xlabel('Epoch')
-    plt.legend(loc="upper left")
+    plt.legend(loc="lower left")
     plt.show()
 
     plt.figure(2)
@@ -89,25 +89,6 @@ def adapt(x):
     global preprocessing_layer
     preprocessing_layer = tf.keras.layers.experimental.preprocessing.Normalization()
     preprocessing_layer.adapt(x)
-
-    # save preprocessing weights
-    weights = preprocessing_layer.get_weights()
-    weights = np.asarray(weights, dtype=object)
-
-    file = open('preprocess_weights.npy', 'wb')
-    file.truncate(0)
-    np.save(file, weights)
-    file.close()
-
-
-def set_preprocess_weights():
-    file = open('preprocess_weights.npy', 'rb')
-    weights = np.load(file, allow_pickle=True)
-    file.close()
-
-    weights = weights.tolist()
-    global preprocessing_layer
-    preprocessing_layer = tf.keras.layers.experimental.preprocessing.Normalization(mean=weights[0], variance=weights[1])
 
 
 def normalize_output(y):
@@ -160,31 +141,25 @@ def get_data(training=True):
 
 
 def make_dataset(x, y=None):
-    if y:
-        x_seq = sequences(x)
-        y_seq = sequences(y)
-        ds = tf.data.Dataset.from_tensor_slices((x_seq, y_seq))
-        ds = ds.batch(batch_size=64, drop_remainder=True)
+    if y is not None:
+        y = y[seq_length-1:]
+
+        batch_size = 64
+        remainder = (len(x) - seq_length + 1) % batch_size
+        x = x[:-remainder]
+
+        ds = tf.keras.preprocessing.timeseries_dataset_from_array(
+            data=x,
+            targets=y,
+            sequence_length=seq_length,
+            batch_size=batch_size)
     else:
         ds = tf.keras.preprocessing.timeseries_dataset_from_array(
             data=x,
             targets=None,
             sequence_length=seq_length,
             batch_size=1)
-
     return ds
-
-
-def sequences(data):
-    seq = []
-    for i in range(len(data) - seq_length + 1):
-        seq.append([data[i] for i in range(i, i + seq_length)])
-    return seq
-
-
-def save_dataset(ds, name):
-    path = os.path.join('../datasets', name)
-    tf.data.experimental.save(ds, path)
 
 
 def set_global():
@@ -198,15 +173,9 @@ def set_global():
 if __name__ == '__main__':
     set_global()
 
-    # train, val = get_data(training=True)
-    # save_dataset(train, 'train_1')
-    # save_dataset(val, 'val_1')
+    train, val = get_data(training=True)
+    train_model(train, val)
 
-    # train = tf.data.experimental.load('../datasets/train_1')
-    # val = tf.data.experimental.load('../datasets/val_1')
-    # set_preprocess_weights()  # if loading previously saved datasets
-    # train_model(train, val)
-
-    inputs = get_data(training=False)
-    outputs = test_model(inputs)
+    # inputs = get_data(training=False)
+    # outputs = test_model(inputs)
     pass
