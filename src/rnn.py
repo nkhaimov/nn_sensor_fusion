@@ -17,9 +17,9 @@ def simple_rnn(rnn_units):
 
 def build_model(rnn_units, batch_size, training=True):
     sequential = tf.keras.Sequential([
-        simple_rnn(rnn_units),
+        tf.keras.layers.LSTM(rnn_units,dropout=.4),
         tf.keras.layers.Dense(20),
-        tf.keras.layers.Dense(2)
+        tf.keras.layers.Dense(4)
     ])
     inputs = tf.keras.Input((seq_length, 6), batch_size)
     if training:
@@ -57,7 +57,7 @@ def plot_history(history):
     plt.figure(1)
     plt.plot(history.history['loss'], label='MAE (training data)')
     plt.plot(history.history['val_loss'], label='MAE (validation data)')
-    plt.title('MAE for Cosine of Attitude')
+    plt.title('MAE for Cosine and Sine of Attitude')
     plt.ylabel('MAE value')
     plt.xlabel('Epoch')
     plt.legend(loc="lower left")
@@ -66,7 +66,7 @@ def plot_history(history):
     plt.figure(2)
     plt.plot(history.history['accuracy'], label='Accuracy (training data)')
     plt.plot(history.history['val_accuracy'], label='Accuracy (validation data)')
-    plt.title('Accuracy for Cosine of Attitude')
+    plt.title('Accuracy for Cosine and Sine of Attitude')
     plt.ylabel('Accuracy')
     plt.xlabel('Epoch')
     plt.legend(loc="upper left")
@@ -80,7 +80,13 @@ def test_model(data):
 
     outputs = []
     for seq in data:
-        outputs.append(model(seq))
+        output = ((model(seq)).numpy())[0]
+        output = np.asarray([
+            np.arctan2(output[0], output[1]),
+            np.arctan2(output[2], output[3])
+        ])
+        output *= 180 / np.pi
+        outputs.append(output)
     return outputs
 
 
@@ -95,9 +101,13 @@ def normalize_output(y):
     # normalize angles using cosine
     # ensures all values in [-1,1] and no large loss between -180 and 180 degrees
     y = y * np.pi / 180
-    normalized_y = np.cos(y)
+    normalized_y = [[np.sin(row[0]),
+                     np.cos(row[0]),
+                     np.sin(row[1]),
+                     np.cos(row[1])]
+                    for row in y]
 
-    return normalized_y
+    return np.asarray(normalized_y)
 
 
 def get_data(training=True):
