@@ -29,11 +29,13 @@ def build_model(rnn_units):
     :return: neural network model
     """
     sequential = tf.keras.Sequential([
-        tf.keras.layers.LSTM(rnn_units, dropout=.4),
-        tf.keras.layers.Dense(20),
+        tf.keras.layers.LSTM(
+            rnn_units,activation='relu', recurrent_activation='sigmoid',
+            dropout=.14, recurrent_dropout=.2
+        ),
         tf.keras.layers.Dense(4)
     ])
-    inputs = tf.keras.Input((seq_length, 6), batch_size)
+    inputs = tf.keras.Input((seq_length, 6))
     x = preprocessing_layer(inputs)
     outputs = sequential(x)
     model = tf.keras.Model(inputs, outputs)
