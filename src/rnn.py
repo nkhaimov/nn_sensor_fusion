@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import keras_tuner as kt
 
 # global
 seq_length = 100
@@ -41,6 +42,67 @@ def build_model(rnn_units):
     model = tf.keras.Model(inputs, outputs)
 
     return model
+
+
+def build_model_hp(hp):
+    sequential = tf.keras.Sequential([
+        tf.keras.layers.LSTM(
+            units=hp.Int('rnn_units', 10, 100, step=5),
+            activation=hp.Choice('activation', ['tanh', 'relu', 'sigmoid', 'linear']),
+            recurrent_activation=hp.Choice('recurrent_activation', ['tanh','sigmoid', 'relu', 'linear']),
+            dropout=hp.Float('dropout', 0.1, 0.6, step=.01),
+            recurrent_dropout=hp.Float('recurrent_dropout', 0.1, 0.6, step=.01)
+        )
+    ])
+    hp_dense = hp.Int('num_dense_layers', 0, 2, default=1)
+    if hp_dense > 0:
+        sequential.add(tf.keras.layers.Dense(
+            hp.Int('dense_units1', 4, 100, step=5, parent_name='num_dense_layers', parent_values=[1,2]),
+            hp.Choice('dense_activation1', ['linear', 'sigmoid', 'relu', 'tanh'],
+                      parent_name='num_dense_layers', parent_values=[1,2])
+        ))
+        if hp_dense > 1:
+            sequential.add(tf.keras.layers.Dense(
+                hp.Int('dense_units2', 4, 100, step=5, parent_name='num_dense_layers', parent_values=[2]),
+                hp.Choice('dense_activation2', ['linear', 'sigmoid', 'relu', 'tanh'],
+                          parent_name='num_dense_layers', parent_values=[2])
+            ))
+    sequential.add(tf.keras.layers.Dense(
+        4, hp.Choice('output_activation', ['linear', 'sigmoid', 'relu', 'tanh'])
+    ))
+
+    inputs = tf.keras.Input((seq_length, 6))
+    x = preprocessing_layer(inputs)
+    outputs = sequential(x)
+    model = tf.keras.Model(inputs, outputs)
+
+    hp_learning_rate = hp.Float('learning_rate', 1e-5, 5e-3, step=1e-5)
+    opt = hp.Choice('optimizer', ['adam', 'sgd', 'rmsprop', 'nadam'])
+    opt = tf.keras.optimizers.get(opt)
+    opt.learning_rate = hp_learning_rate
+
+    model.compile(loss='mean_absolute_error',
+                  optimizer=opt,
+                  metrics=['mean_squared_error', 'accuracy'])
+    return model
+
+
+def tune_hyperparameters(train, val):
+    tuner = kt.Hyperband(
+        build_model_hp,
+        objective=kt.Objective('val_accuracy', direction='max'),
+        max_epochs=40,
+        hyperband_iterations=1)  # recommended to set as high as possible
+
+    tuner.search(train,
+                 validation_data=val,
+                 epochs=40,
+                 callbacks=[tf.keras.callbacks.EarlyStopping(patience=1), tf.keras.callbacks.TerminateOnNaN()])
+    # best_model = tuner.get_best_models(1)[0]
+    # filepath = os.path.join('./training_checkpoints', file_name)
+    # best_model.save(filepath)
+
+    tuner.results_summary(num_trials=10)
 
 
 def train_model(train, val, file_name):
@@ -318,9 +380,11 @@ if __name__ == '__main__':
         train, val = get_data(training=True)
         inputs, ref = get_data(training=False)
 
-    train_model(train, val, 'mymodel_sim')
+    tune_hyperparameters(train, val)
 
-    outputs = test_model(inputs, 'mymodel_sim')
-    graph_model_output(outputs, ref)
+    # train_model(train, val, 'mymodel_sim1_tuned')
+    #
+    # outputs = test_model(inputs, 'mymodel_sim1_tuned')
+    # graph_model_output(outputs, ref)
 
     pass
