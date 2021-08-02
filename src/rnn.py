@@ -42,13 +42,13 @@ def build_model(rnn_units):
 
 
 def train_model(train, val, file_name):
-    '''
+    """
     Function to train the model, save weights, and graph history (loss and metrics).
     :param train: (tensorflow Dataset) training dataset
     :param val: (tensorflow Dataset) validation dataset
     :param file_name: (string)
     :return: None
-    '''
+    """
     model = build_model(rnn_units)
 
     # Stop training after 5 epochs with no improvement in loss for validation set. Restore model weights to those
@@ -100,12 +100,12 @@ def plot_history(history):
 
 
 def test_model(data, file_name):
-    '''
+    """
     Load model weights. Run trained model on a set of inputs and return outputs scaled to angles.
     :param data: (tensorflow Dataset) inputs to run through the model
     :param file_name: (string) location of model weights to load from
     :return: (list) roll and pitch in degrees
-    '''
+    """
     model = build_model(rnn_units)
     model.load_weights('./training_checkpoints/' + file_name)
     model.summary()
