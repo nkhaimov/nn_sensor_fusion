@@ -10,10 +10,10 @@ preprocessing_layer = tf.keras.layers.experimental.preprocessing.Normalization()
 
 
 def simple_rnn(rnn_units):
-    '''
+    """
     :param rnn_units: (integer) number of rnn_units in the simple_rnn
     :return: SimpleRNN layer with rnn_units
-    '''
+    """
     return tf.keras.layers.SimpleRNN(
         rnn_units,
         activation='relu',
@@ -23,11 +23,11 @@ def simple_rnn(rnn_units):
     )
 
 
-    '''
 def build_model(rnn_units):
+    """
     :param rnn_units: (integer) number of neurons in the rnn layer
     :return: neural network model
-    '''
+    """
     sequential = tf.keras.Sequential([
         tf.keras.layers.LSTM(rnn_units, dropout=.4),
         tf.keras.layers.Dense(20),
@@ -127,8 +127,8 @@ def test_model(data, file_name):
 def graph_model_output(output, ref):
     ref = ref[seq_length - 1:]
 
-    roll, pitch = output[:,0], output[:,1]
-    roll_ref, pitch_ref = ref[:,0], ref[:,1]
+    roll, pitch = output[:, 0], output[:, 1]
+    roll_ref, pitch_ref = ref[:, 0], ref[:, 1]
     plt.figure(1)
     plt.plot(roll, label='model output', lw=0.5)
     plt.plot(roll_ref, label='reference', lw=0.5)
@@ -166,7 +166,7 @@ def normalize_output(y):
 
 
 def get_data(training=True):
-    '''
+    """
     Parse dataset for input and expected output values. If training, each dataset is split into training and validation
     data and outputs are normalized. A tensorflow Dataset is created for each file parsed, and the Datasets are
     concatenated. Concatenating tensorflow Datasets avoids the issue of sequences and batches spilling across different
@@ -177,7 +177,7 @@ def get_data(training=True):
     :return:
         if training: train_ds (tensorflow Dataset), val_ds (tensorflow Dataset)
         else: test_ds (tensorflow Dataset), outputs (numpy Nx2 array)
-    '''
+    """
     datasets = {}
     if training:
         dir = '../data/training/'
@@ -235,15 +235,14 @@ def get_data(training=True):
 
 
 def get_sim_data(sim_id, training=True):
-    '''
-
+    """
     :param sim_id: (string)
     :param training: (boolean) if true, splits dataset into 2% testing, 20% validation, 78% training
     :return:
         if training: train_ds (Dataset), val_ds (Dataset),
                      test_ds (Dataset), y_test (numpy Nx2 array)
         else: test_ds (Dataset), y (numpy Nx2 array)
-    '''
+    """
     dir = '../data/sims/sim' + sim_id
     files = os.listdir(dir)
     acc = np.genfromtxt(os.path.join(dir, files[2]), delimiter=',', skip_header=1)
