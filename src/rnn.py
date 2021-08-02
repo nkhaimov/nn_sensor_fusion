@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 
 # global
-seq_length = 200
+seq_length = 100
 rnn_units = 20
 preprocessing_layer = tf.keras.layers.experimental.preprocessing.Normalization()
 
@@ -20,14 +20,12 @@ def simple_rnn(rnn_units):
         kernel_initializer='glorot_uniform',
         dropout=.4,
         return_sequences=False,
-        stateful=True
     )
 
 
-def build_model(rnn_units, batch_size):
     '''
+def build_model(rnn_units):
     :param rnn_units: (integer) number of neurons in the rnn layer
-    :param batch_size: (integer) batch size corresponding to input Datasets
     :return: neural network model
     '''
     sequential = tf.keras.Sequential([
@@ -51,18 +49,18 @@ def train_model(train, val, file_name):
     :param file_name: (string)
     :return: None
     '''
-    model = build_model(rnn_units, batch_size=64)
+    model = build_model(rnn_units)
 
     # Stop training after 5 epochs with no improvement in loss for validation set. Restore model weights to those
     # corresponding to lowest val_loss.
     early_stopping = tf.keras.callbacks.EarlyStopping(
-        monitor='val_loss', patience=5, verbose=1,
+        monitor='val_loss', patience=2, verbose=1,
         mode='min', restore_best_weights=True
     )
 
     # Set loss, optimizer, and metrics for model.
     model.compile(loss='mean_absolute_error',
-                  optimizer=tf.optimizers.Adam(learning_rate=4e-3),
+                  optimizer=tf.optimizers.Nadam(learning_rate=.00222),
                   metrics=['mean_squared_error', 'accuracy'])
 
     # Train model. Validate after each epoch.
@@ -108,21 +106,21 @@ def test_model(data, file_name):
     :param file_name: (string) location of model weights to load from
     :return: (list) roll and pitch in degrees
     '''
-    model = build_model(rnn_units, batch_size=1)
+    model = build_model(rnn_units)
     model.load_weights('./training_checkpoints/' + file_name)
     model.summary()
 
     outputs = []
-    for seq in data:
-        output = ((model(seq)).numpy())[0]
-
-        # calculate angles using their cos and sin values
-        output = np.asarray([
-            np.arctan2(output[0], output[1]),
-            np.arctan2(output[2], output[3])
-        ])
-        output *= 180 / np.pi  # convert to degrees
-        outputs.append(output)
+    for batch in data:
+        output = (model(batch)).numpy()
+        for item in output:
+            # calculate angles using their cos and sin values
+            angles = np.asarray([
+                np.arctan2(item[0], item[1]),
+                np.arctan2(item[2], item[3])
+            ])
+            angles *= 180 / np.pi
+            outputs.append(angles)
     return np.asarray(outputs)
 
 
@@ -251,7 +249,10 @@ def get_sim_data(sim_id, training=True):
     acc = np.genfromtxt(os.path.join(dir, files[2]), delimiter=',', skip_header=1)
     gyr = np.genfromtxt(os.path.join(dir, files[5]), delimiter=',', skip_header=1)
     euler = np.genfromtxt(os.path.join(dir, files[3]), delimiter=',', skip_header=1, usecols=(1, 2))
-    euler[:, [1, 0]] = euler[:, [0, 1]] # swap columns so roll comes before pitch
+    euler[:, [1, 0]] = euler[:, [0, 1]]  # swap columns so roll comes before pitch
+
+    acc = ned2enu(acc)
+    gyr = ned2enu(gyr)
 
     x = np.column_stack((acc, gyr))
     y = euler
@@ -281,23 +282,18 @@ def get_sim_data(sim_id, training=True):
 def make_dataset(x, y=None):
     if y is not None:
         y = y[seq_length - 1:]
-
-        batch_size = 64
-        remainder = (len(x) - seq_length + 1) % batch_size
-        x = x[:-remainder]
-
-        ds = tf.keras.preprocessing.timeseries_dataset_from_array(
-            data=x,
-            targets=y,
-            sequence_length=seq_length,
-            batch_size=batch_size)
-    else:
-        ds = tf.keras.preprocessing.timeseries_dataset_from_array(
-            data=x,
-            targets=None,
-            sequence_length=seq_length,
-            batch_size=1)
+    ds = tf.keras.preprocessing.timeseries_dataset_from_array(
+        data=x,
+        targets=y,
+        sequence_length=seq_length,
+        batch_size=128)
     return ds
+
+
+def ned2enu(data):
+    data[:, [1, 0]] = data[:, [0, 1]]  # swap x and y
+    data[:, 2] = - data[:, 2]  # negate z
+    return data
 
 
 if __name__ == '__main__':
