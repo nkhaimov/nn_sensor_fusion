@@ -255,6 +255,7 @@ def get_data(training=True):
     if training:
         train_datasets = []
         val_datasets = []
+        first = True
         for key in datasets.keys():
             data = datasets[key]
             x, y = data[0], data[1]
@@ -264,6 +265,13 @@ def get_data(training=True):
             len_train = (len(x) // 5) * 4
             x_train, x_val = np.split(x, [len_train])
             y_train, y_val = np.split(y, [len_train])
+
+            if first:
+                arr_x_train = x_train.copy()
+                first = False
+            else:
+                arr_x_train = np.append(arr_x_train, x_train, axis=0)
+
 
             train_ds = make_dataset(x_train, y_train)
             val_ds = make_dataset(x_val, y_val)
@@ -276,7 +284,7 @@ def get_data(training=True):
             train_ds = train_ds.concatenate(ds)
 
         # adapt input normalization layer using training data
-        preprocessing_layer.adapt(train_ds)
+        preprocessing_layer.adapt(arr_x_train)
 
         val_ds = val_datasets[0]
         for ds in val_datasets[1:]:
@@ -285,13 +293,18 @@ def get_data(training=True):
         return train_ds, val_ds
     else:
         test_datasets = []
-        outputs = np.array([])
+        first = True
         for key in datasets.keys():
             data = datasets[key]
             x, y = data[0], data[1]
             test_ds = make_dataset(x)
             test_datasets.append(test_ds)
-            outputs = np.append(outputs, y, axis=0)
+
+            if first:
+                outputs = y.copy()
+                first = False
+            else:
+                outputs = np.append(outputs, y, axis=0)
         test_ds = test_datasets[0]
         for ds in test_datasets[1:]:
             test_ds = test_ds.concatenate(ds)
