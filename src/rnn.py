@@ -296,19 +296,6 @@ def ned2enu(data):
     return data
 
 
-def save(outputs, ref, filepath):
-    """
-    Function to write neural network outputs to file.
-    :param outputs: Nx2 numpy array with roll and pitch angles from model output
-    :param ref: Nx2 numpy array with roll and pitch reference angles
-    :param filepath: location to save data to
-    :return: None
-    """
-    ref = ref[seq_length - 1:]
-    angles = np.column_stack((outputs, ref))
-    np.savetxt(filepath, angles, delimiter='	', header='Model Roll	Model Pitch 	Ref Roll 	Ref Pitch')
-
-
 if __name__ == '__main__':
     using_sim = True
     if using_sim:
